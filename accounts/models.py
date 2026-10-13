@@ -28,22 +28,18 @@ class Profile(models.Model):
 
     @property
     def full_name(self):
-        # Для базы и календаря: Иванов Иван Иванович или Отсутствует Отсутствует Отсутствует
         return f"{self.safe_last} {self.safe_first} {self.safe_middle}"
 
     @property
     def short_name(self):
-        # Для шапки и таблицы: Иванов И.И. или Отсутствует О.О.
         last = self.safe_last
         f = f"{self.safe_first[0]}." if self.safe_first!= DEFAULT_FIO and self.safe_first else "О."
         m = f"{self.safe_middle[0]}." if self.safe_middle!= DEFAULT_FIO and self.safe_middle else "О."
-        # если все отсутствует - просто Отсутствует
         if last == DEFAULT_FIO and self.safe_first == DEFAULT_FIO and self.safe_middle == DEFAULT_FIO:
             return "Отсутствует О.О."
         return f"{last} {f}{m}".strip()
 
     def save(self, *args, **kwargs):
-        # если в базе пусто - пишем Отсутствует прямо в базу
         if not self.middle_name:
             self.middle_name = DEFAULT_FIO
         if not self.user.last_name:
@@ -63,7 +59,6 @@ class AccessGrant(models.Model):
 
 @receiver(post_save, sender=User)
 def create_or_fix_profile(sender, instance, created, **kwargs):
-    # создаем профиль и сразу ставим заглушки если ФИО нет
     profile, _ = Profile.objects.get_or_create(user=instance, defaults={'middle_name': DEFAULT_FIO})
     changed = False
     if not instance.last_name:

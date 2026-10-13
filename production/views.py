@@ -1,204 +1,204 @@
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth.decorators import login_required
-from django.contrib import messages
 from django.utils import timezone
-from django.contrib.auth.models import User
+from django.contrib import messages
 from django.http import JsonResponse
-from django.db.models import Sum
+from .models import Detail, Operation, Kit, Shift, ProductionRecord
+from schedule.models import ScheduleEntry, SHIFT_HOURS
 
-from.models import Detail, Operation, Kit, Shift, ProductionRecord
-from schedule.models import WorkSchedule, ScheduleEntry
 
-SHIFT_NAMES = {
-    'Д': 'День 07:00-15:45',
-    'П': 'Вечер 15:45-00:15',
-    'У': 'День 07:00-19:00',
-    'Н': 'Ночь 19:00-07:00',
-    'В': 'Выходной',
-    'О': 'Отпуск',
-}
+def get_today_entry(user, today):
+    """Берем запись из твоего графика Бригады №4"""
+    entry = ScheduleEntry.objects.filter(
+        employee=user,
+        schedule__year=today.year,
+        schedule__month=today.month,
+        day=today.day
+    ).select_related('schedule').first()
+    return entry
 
-def get_shift(user):
-    return Shift.objects.get_or_create(user=user, date=timezone.now().date())[0]
+
+def has_work_today(entry):
+    if not entry:
+        return False
+    # Выходной, пусто, отпуск — не считаем сменой
+    if entry.shift in ('', 'В', 'О'):
+        return False
+    if entry.hours == 0:
+        # на всякий случай берем из SHIFT_HOURS
+        return SHIFT_HOURS.get(entry.shift, 0) > 0
+    return True
+
 
 @login_required
 def dashboard(request):
-    shift = get_shift(request.user)
-    records = shift.records.select_related('operation__detail','kit','user').order_by('-created_at')
-    details = Detail.objects.order_by('-created_at')
-    operations = Operation.objects.select_related('detail').order_by('detail__number','number')
-    kits = Kit.objects.select_related('detail').prefetch_related('records').order_by('-created_at')[:100]
+    today = timezone.now().date()
+    entry = get_today_entry(request.user, today)
 
-    # прогресс смены
-    closed_records = records.filter(percent__gte=100).count()
-    total_records = records.count()
-    total_percent = sum(r.percent for r in records)
-    progress = int((closed_records / total_records * 100) if total_records else 0)
+    if not has_work_today(entry):
+        return render(request, 'production/dashboard.html', {
+            'has_shift': False,
+            'today': today,
+            'hourly_rate': request.user.profile.hourly_rate,
+            'pay_type': request.user.profile.pay_type,
+            'entry': entry,
+        })
 
-    today = timezone.localdate()
-    schedule = WorkSchedule.objects.filter(month=today.month, year=today.year).order_by('-id').first()
-    if not schedule:
-        schedule = WorkSchedule.objects.order_by('-year','-month').first()
-    my_entry = None; my_shift = None; colleagues = []
-    if schedule:
-        my_entry = ScheduleEntry.objects.filter(schedule=schedule, employee=request.user, day=today.day).first()
-        if my_entry:
-            my_shift = my_entry.shift
-        if my_shift and my_shift not in ('В','О','', None):
-            colleagues = ScheduleEntry.objects.filter(schedule=schedule, day=today.day, shift=my_shift).exclude(employee=request.user).select_related('employee','employee__profile')
+    # Есть смена в графике
+    hours = entry.hours if entry.hours else SHIFT_HOURS.get(entry.shift, 11.2)
+    shift, _ = Shift.objects.get_or_create(
+        user=request.user,
+        date=today,
+        defaults={'scheduled_hours': hours}
+    )
+    if shift.scheduled_hours != hours:
+        shift.scheduled_hours = hours
+        shift.save()
+
+    shift.recalc()
+    records = shift.records.select_related('kit__detail', 'operation').all()
 
     return render(request, 'production/dashboard.html', {
-        'shift': shift, 'records': records, 'details': details, 'operations': operations, 'kits': kits,
-        'today': today, 'schedule': schedule, 'my_entry': my_entry, 'my_shift': my_shift,
-        'my_shift_name': SHIFT_NAMES.get(my_shift, my_shift or '-'),
-        'colleagues': colleagues,
-        'closed_records': closed_records, 'total_records': total_records,
-        'total_percent': total_percent, 'progress': progress,
-        'SHIFT_NAMES': SHIFT_NAMES,
+        'has_shift': True,
+        'shift': shift,
+        'entry': entry,
+        'today': today,
+        'details': Detail.objects.all(),
+        'operations': Operation.objects.select_related('detail').all(),
+        'kits': Kit.objects.select_related('detail').prefetch_related('records').all(),
+        'records': records,
+        'total_earnings': shift.total_earnings,
+        'total_time_min': shift.total_time_min,
+        'pay_type': request.user.profile.pay_type,
+        'hourly_rate': request.user.profile.hourly_rate,
+        'closed_records': records.count(),
+        'total_records': 20,
+        'progress': min(100, records.count() * 5),
+        'my_shift': entry.shift,
+        'colleagues': [],
     })
 
-@login_required
-def journal(request):
-    user_id = request.GET.get('user')
-    date_str = request.GET.get('date')
-    qs = ProductionRecord.objects.select_related('kit__detail','operation','user','shift').order_by('-created_at')
-    if user_id:
-        qs = qs.filter(user_id=user_id)
-    if date_str:
-        qs = qs.filter(shift__date=date_str)
-    total_time = sum(r.time_min for r in qs)
-    total_count = qs.count()
-    users = User.objects.filter(productionrecord__isnull=False).distinct().order_by('username')
-    dates = Shift.objects.values_list('date', flat=True).distinct().order_by('-date')[:30]
-
-    def format_minutes(total_min):
-        total_min = int(round(total_min))
-        if total_min <=0: return "0м"
-        h = total_min // 60; m = total_min % 60
-        if h and m: return f"{h}ч {m}м"
-        if h: return f"{h}ч"
-        return f"{m}м"
-
-    return render(request, 'production/journal.html', {
-        'records': qs[:200],
-        'users': users,
-        'dates': dates,
-        'selected_user': int(user_id) if user_id else None,
-        'selected_date': date_str,
-        'total_time_display': format_minutes(total_time),
-        'total_count': total_count
-    })
 
 @login_required
 def add_record(request):
-    if request.method!='POST':
+    if request.method != 'POST':
         return redirect('/')
-    op = get_object_or_404(Operation, id=request.POST.get('operation'))
-    kit_number = request.POST.get('kit_number','').strip()
-    if not kit_number:
-        messages.error(request, 'Введи номер комплекта')
-        return redirect('/')
+    op_id = request.POST.get('operation')
+    kit_number = request.POST.get('kit_number', '').strip()
     try:
-        percent = int(request.POST.get('percent',10))
+        percent = int(request.POST.get('percent', 0))
     except:
-        percent = 10
-
-    kit,_=Kit.objects.get_or_create(detail=op.detail, kit_number=kit_number, defaults={'created_by':request.user})
-    existing = ProductionRecord.objects.filter(kit=kit, operation=op).first()
-    cur = existing.percent if existing else 0
-    if cur + percent > 100:
-        messages.error(request, f'Оп.{op.number} уже {cur}%, осталось {100-cur}%')
+        percent = 0
+    if not op_id or not kit_number or percent <= 0:
+        messages.error(request, 'Заполни поля');
         return redirect('/')
-    shift = get_shift(request.user)
-    if existing:
-        existing.percent = cur + percent
-        existing.shift=shift
-        existing.save()
-    else:
-        ProductionRecord.objects.create(kit=kit, operation=op, user=request.user, shift=shift, percent=percent)
-    messages.success(request, f'Закрыто {percent}% — {kit.kit_number}')
+
+    today = timezone.now().date()
+    entry = get_today_entry(request.user, today)
+    if not has_work_today(entry):
+        messages.error(request, 'Сегодня нет смены в графике — закрой смену нельзя');
+        return redirect('/')
+
+    operation = get_object_or_404(Operation, id=op_id)
+    hours = entry.hours if entry.hours else SHIFT_HOURS.get(entry.shift, 11.2)
+    shift, _ = Shift.objects.get_or_create(user=request.user, date=today, defaults={'scheduled_hours': hours})
+
+    kit, _ = Kit.objects.get_or_create(
+        detail=operation.detail,
+        kit_number=kit_number,
+        defaults={'created_by': request.user}
+    )
+    existing = ProductionRecord.objects.filter(kit=kit, operation=operation).first()
+    already = existing.percent if existing else 0
+    if percent > 100 - already:
+        messages.error(request, f'Можно только {100 - already}%');
+        return redirect('/')
+    record, _ = ProductionRecord.objects.update_or_create(
+        kit=kit, operation=operation,
+        defaults={'user': request.user, 'shift': shift, 'percent': already + percent}
+    )
+    record.save()
     return redirect('/')
+
 
 @login_required
 def add_detail(request):
-    if request.method=='POST':
-        number = request.POST.get('number','').strip()
-        name = request.POST.get('name','').strip()
-        if number:
-            Detail.objects.get_or_create(number=number, defaults={'name': name})
-            messages.success(request, f'Деталь {number} создана')
+    if request.method == 'POST':
+        number = request.POST.get('number', '').strip();
+        name = request.POST.get('name', '').strip()
+        if number and name: Detail.objects.get_or_create(number=number, defaults={'name': name})
         return redirect('/')
     return render(request, 'production/add_detail.html')
 
+
 @login_required
 def add_operation(request):
-    if request.method=='POST':
-        detail_id = request.POST.get('detail')
-        number = request.POST.get('number','').strip()
-        name = request.POST.get('name','').strip()
+    if request.method == 'POST':
         try:
-            hours = int(request.POST.get('hours') or 0)
-            minutes = int(request.POST.get('minutes') or 0)
-        except:
-            hours, minutes = 0, 0
-        total_min = hours * 60 + minutes
-        if total_min <= 0:
-            messages.error(request, 'Норма должна быть больше 0')
-            return redirect('/production/add-operation/')
-        if detail_id and number:
-            Operation.objects.create(detail_id=detail_id, number=number, name=name, time_norm_min=float(total_min))
-            messages.success(request, f'Операция Оп.{number} — норма {hours}ч {minutes}м')
+            detail = Detail.objects.get(id=request.POST.get('detail'))
+            Operation.objects.create(detail=detail, number=int(request.POST.get('number')),
+                                     name=request.POST.get('name', '').strip(),
+                                     time_norm_min=float(request.POST.get('time_norm_min')))
+        except Exception as e:
+            messages.error(request, f'Ошибка:{e}')
         return redirect('/')
     return render(request, 'production/add_operation.html', {'details': Detail.objects.all()})
 
+
 @login_required
 def kit_detail(request, kit_id):
-    return render(request, 'production/kit_detail.html', {'kit': get_object_or_404(Kit, id=kit_id)})
+    kit = get_object_or_404(Kit, id=kit_id)
+    return render(request, 'production/kit_detail.html', {'kit': kit})
+
 
 @login_required
 def close_shift(request):
-    if request.method=='POST':
-        s=get_shift(request.user)
-        s.is_closed=True
-        s.save()
-        messages.success(request, 'Смена закрыта')
-    return redirect('/')
+    today = timezone.now().date()
+    shift = Shift.objects.filter(user=request.user, date=today).first()
+    if shift: shift.is_closed = True; shift.save()
+    return redirect('journal')
 
-# ========== API ДЛЯ БЛОКА "+ ЗАКРЫТЬ РАБОТУ" ==========
+
+@login_required
+def journal(request):
+    shifts = Shift.objects.filter(user=request.user).order_by('-date')
+    records = ProductionRecord.objects.filter(user=request.user).select_related('kit__detail', 'operation',
+                                                                                'shift').order_by('-created_at')[:300]
+    return render(request, 'production/journal.html', {'shifts': shifts, 'records': records})
+
+
 @login_required
 def api_operations(request):
-    detail_id = request.GET.get('detail')
-    if not detail_id:
-        return JsonResponse([], safe=False)
-    ops = Operation.objects.filter(detail_id=detail_id).order_by('number')
-    data = []
-    for o in ops:
-        # норма времени
-        mins = int(o.time_norm_min or 0)
-        h, m = divmod(mins, 60)
-        norm = f"{h}ч {m}м" if h else f"{m}м" if m else "1ч 30м"
-        data.append({'id': o.id, 'text': f"Оп.{o.number} {o.name} — {norm}"})
-    return JsonResponse(data, safe=False)
+    detail_id = request.GET.get('detail_id')
+    if not detail_id: return JsonResponse([], safe=False)
+    ops = Operation.objects.filter(detail_id=detail_id).values('id', 'number', 'name', 'time_norm_min')
+    return JsonResponse(
+        [{'id': o['id'], 'number': o['number'], 'name': o['name'], 'norm': o['time_norm_min']} for o in ops],
+        safe=False)
+
 
 @login_required
 def api_kits(request):
-    op_id = request.GET.get('operation')
-    if not op_id:
-        return JsonResponse({'kits': [], 'used_count': 0})
-    op = get_object_or_404(Operation, id=op_id)
-    # все комплекты этой детали
-    all_kits = Kit.objects.filter(detail=op.detail).values_list('kit_number', flat=True).distinct()
-    # уже полностью закрытые по этой операции
-    closed = ProductionRecord.objects.filter(operation_id=op_id, percent__gte=100).values_list('kit__kit_number', flat=True)
-    free = [k for k in all_kits if k not in list(closed)]
-    return JsonResponse({'kits': free[:50], 'used_count': len(closed)})
+    detail_id = request.GET.get('detail_id');
+    op_id = request.GET.get('operation_id')
+    if not detail_id or not op_id: return JsonResponse([], safe=False)
+    result = []
+    for k in Kit.objects.filter(detail_id=detail_id):
+        rec = ProductionRecord.objects.filter(kit=k, operation_id=op_id).first()
+        cur = rec.percent if rec else 0
+        if cur >= 100: continue
+        result.append({'number': k.kit_number, 'closed': cur, 'remaining': 100 - cur})
+    return JsonResponse(result, safe=False)
+
 
 @login_required
 def api_remaining(request):
-    op_id = request.GET.get('operation')
-    kit_number = request.GET.get('kit_number','').strip()
-    if not op_id or not kit_number:
-        return JsonResponse({'remaining': 100, 'total': 0})
-    total = ProductionRecord.objects.filter(operation_id=op_id, kit__kit_number=kit_number).aggregate(s=Sum('percent'))['s'] or 0
-    remaining = max(0, 100 - int(total))
-    return JsonResponse({'remaining': remaining, 'total': int(total)})
+    kit_number = request.GET.get('kit_number', '').strip();
+    op_id = request.GET.get('operation_id');
+    detail_id = request.GET.get('detail_id')
+    if not kit_number or not op_id or not detail_id: return JsonResponse({'remaining': 100})
+    kit = Kit.objects.filter(detail_id=detail_id, kit_number=kit_number).first()
+    if not kit: return JsonResponse({'remaining': 100})
+    rec = ProductionRecord.objects.filter(kit=kit, operation_id=op_id).first()
+    cur = rec.percent if rec else 0
+    return JsonResponse({'closed': cur, 'remaining': 100 - cur})

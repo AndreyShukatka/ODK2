@@ -16,12 +16,9 @@
 <a href='/schedule/' class='text-white font-bold border border-gray-700 px-3 py-1 rounded-lg'>График</a>
 <a href='/journal/' class='text-gray-400'>Журнал</a>
 <a href='/accounts/profile/' class='text-gray-400'>Доступы</a>
-
-<!-- ВОТ ТУТ ТОЛЬКО ФИО, БЕЗ ЛОГИНА -->
 <div class="bg-[#0f1115] border border-gray-700 rounded-xl px-3 py-1">
 <span class="text-white font-bold text-">{{ user.profile.short_name }}</span>
 </div>
-
 <a href='/accounts/logout/' class='text-red-400 ml-2'>Выйти</a>
 {% else %}
 <a href='/accounts/login/'>Войти</a>

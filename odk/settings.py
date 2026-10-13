@@ -12,7 +12,7 @@ INSTALLED_APPS=[
     'django.contrib.staticfiles',
     'accounts',
     'production',
-    'schedule', # <- ДОБАВИЛ ГРАФИК
+    'schedule',
 ]
 MIDDLEWARE=[
     'django.middleware.security.SecurityMiddleware',
@@ -38,9 +38,7 @@ DATABASES={
     'default':{
         'ENGINE':'django.db.backends.sqlite3',
         'NAME':BASE_DIR/'db.sqlite3',
-        'OPTIONS': {
-            'timeout': 20,
-        }
+        'OPTIONS': {'timeout': 20,}
     }
 }
 LANGUAGE_CODE='ru-ru'

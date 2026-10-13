@@ -12,44 +12,25 @@ def register_view(request):
         last_name = request.POST.get('last_name','').strip()
         first_name = request.POST.get('first_name','').strip()
         middle_name = request.POST.get('middle_name','').strip()
-
         if not last_name or not first_name or not middle_name:
-            return render(request,'accounts/register.html', {
-                'error': 'Фамилия, Имя и Отчество обязательны!',
-                'data': request.POST
-            })
-
+            return render(request,'accounts/register.html', {'error': 'Фамилия, Имя и Отчество обязательны!','data': request.POST})
         if User.objects.filter(username=username).exists():
             return render(request,'accounts/register.html', {'error':'Такой логин уже есть','data':request.POST})
-
-        u=User.objects.create_user(
-            username=username,
-            password=password,
-            last_name=last_name,
-            first_name=first_name
-        )
-        # профиль уже создался сигналом, поэтому обновляем
+        u=User.objects.create_user(username=username,password=password,last_name=last_name,first_name=first_name)
         profile, _ = Profile.objects.get_or_create(user=u)
         profile.role = request.POST.get('role','cnc_operator')
         profile.pay_type = request.POST.get('pay_type','piecework')
-        try:
-            profile.hourly_rate = float(request.POST.get('hourly_rate',400) or 400)
-        except:
-            profile.hourly_rate = 400
+        try: profile.hourly_rate = float(request.POST.get('hourly_rate',400) or 400)
+        except: profile.hourly_rate = 400
         profile.middle_name = middle_name
         profile.save()
-
         login(request,u)
         return redirect('/')
     return render(request,'accounts/register.html')
 
 @login_required
 def profile_view(request):
-    return render(request,'accounts/profile.html',{
-        'given':AccessGrant.objects.filter(granter=request.user),
-        'received':AccessGrant.objects.filter(grantee=request.user),
-        'users':User.objects.exclude(id=request.user.id)
-    })
+    return render(request,'accounts/profile.html',{'given':AccessGrant.objects.filter(granter=request.user),'received':AccessGrant.objects.filter(grantee=request.user),'users':User.objects.exclude(id=request.user.id)})
 
 @login_required
 def grant_access(request):
@@ -73,26 +54,16 @@ def settings_rate(request):
             last = request.POST.get('last_name','').strip()
             first = request.POST.get('first_name','').strip()
             pay_type = request.POST.get('pay_type')
-
-            if rate < 50 or rate > 10000:
-                raise ValueError('Ставка должна быть 50-10000')
-
+            if rate < 50 or rate > 10000: raise ValueError('Ставка должна быть 50-10000')
             profile.hourly_rate = rate
-            if middle:
-                profile.middle_name = middle
-            if pay_type in ('hourly','piecework'):
-                profile.pay_type = pay_type
+            if middle: profile.middle_name = middle
+            if pay_type in ('hourly','piecework'): profile.pay_type = pay_type
             profile.save()
-
-            if last:
-                request.user.last_name = last
-            if first:
-                request.user.first_name = first
+            if last: request.user.last_name = last
+            if first: request.user.first_name = first
             request.user.save()
-
             messages.success(request, f'Сохранено: ставка {rate:.0f} ₽/ч, {profile.short_name}')
         except Exception as e:
             messages.error(request, f'Ошибка: {e}')
         return redirect('settings_rate')
-
     return render(request, 'accounts/settings.html', {'profile': profile})

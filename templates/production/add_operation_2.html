@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<h1>Add operation</h1><form method='post'>{% csrf_token %}<select name='detail'>{% for d in details %}<option value='{{d.id}}'>{{d.number}}</option>{% endfor %}</select><input name='number'><input name='name'><input name='norm_minutes' placeholder='мин'><button>Save</button></form>{% endblock %}

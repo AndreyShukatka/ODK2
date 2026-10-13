@@ -33,7 +33,7 @@ class WorkSchedule(models.Model):
 
 class ScheduleEntry(models.Model):
     schedule = models.ForeignKey(WorkSchedule, on_delete=models.CASCADE, related_name="entries")
-    employee = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Сотрудник") # <- теперь User
+    employee = models.ForeignKey(User, on_delete=models.CASCADE, verbose_name="Сотрудник")
     day = models.IntegerField()
     shift = models.CharField(max_length=2, choices=SHIFT_CHOICES, blank=True, default="")
     hours = models.FloatField(default=0)

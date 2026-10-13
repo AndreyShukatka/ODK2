@@ -13,8 +13,6 @@
 <button onclick="window.print()" class="bg-white text-black px-5 py-2 rounded-xl font-bold text-sm">Печать</button>
 </div>
 </div>
-
-<!-- управление -->
 <div class="flex flex-wrap gap-2 mb-4 no-print">
   <form method="post" action="/schedule/{{ schedule.id }}/add-employee/" class="flex gap-2 bg-[#181b22] border border-gray-700 rounded-xl p-2">
     {% csrf_token %}
@@ -26,14 +24,11 @@
     </select>
     <button class="bg-white text-black rounded-lg px-4 py-2 text-sm font-bold">Добавить</button>
   </form>
-
   <form id="delete-schedule-form" method="post" action="/schedule/{{ schedule.id }}/delete/" class="ml-auto">
     {% csrf_token %}
   </form>
   <button form="delete-schedule-form" onclick="return confirm('Удалить график Бригады №{{ schedule.brigade_no }} за {{ schedule.month }}/{{ schedule.year }}?')" class="bg-red-500/10 border border-red-500/30 text-red-400 rounded-xl px-4 py-2 text-sm">Удалить график</button>
 </div>
-
-<!-- ОСНОВНАЯ ФОРМА СОХРАНЕНИЯ - ТОЛЬКО ТАБЛИЦА -->
 <form id="main-save-form" method="post">{% csrf_token %}
 <div class="overflow-auto bg-white text-black rounded- border border-black">
 <table class="w-full border-collapse border border-black text- text-center">
@@ -71,7 +66,6 @@
 <td class="border border-black font-black text- bg-white ur-cell" data-emp="{{ emp_id }}">{{ totals|dict_get:emp_id|dict_get_attr:'ur' }}</td>
 <td class="border border-black bg-white font-bold sv-cell" id="sv_{{ emp_id }}" data-emp="{{ emp_id }}">{{ totals|dict_get:emp_id|dict_get_attr:'sv' }}</td>
 <td rowspan="2" class="border border-black bg-white no-print text-center">
-  <!-- КНОПКА ПРИВЯЗАНА К ВНЕШНЕЙ ФОРМЕ, А НЕ ВЛОЖЕНА -->
   <button type="submit" form="remove-{{ emp_id }}" onclick="return confirm('Удалить {{ emp.last_name }} из графика?')" class="w-7 h-7 bg-red-100 text-red-600 rounded-full text-xs font-bold">✕</button>
 </td>
 </tr>
@@ -94,14 +88,11 @@
 <div class="mt-6 text- text-gray-300">Д-работа с 07:00 до 15:45, П-работа с 15:45 до 00:15, У-работа с 07:00 до 19:00, Н-работа с 19:00 до 07:00, В-выходной, О-отпуск.</div>
 <button class="mt-6 w-full bg-white text-black rounded-xl py-4 font-black text- no-print">Сохранить</button>
 </form>
-
-<!-- СКРЫТЫЕ ФОРМЫ УДАЛЕНИЯ - ВНЕ ГЛАВНОЙ ФОРМЫ, ПОЭТОМУ ТЕПЕРЬ РАБОТАЮТ ВСЕ -->
 {% for emp in employees %}
 <form id="remove-{{ emp.id }}" method="post" action="/schedule/{{ schedule.id }}/remove-employee/{{ emp.id }}/" class="hidden">
   {% csrf_token %}
 </form>
 {% endfor %}
-
 <script>
 const NORM = parseFloat("{{ schedule.norm_hours }}".replace(',','.'))||176;
 function autoHours(sel,key){

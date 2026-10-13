@@ -1,0 +1,101 @@
+{% extends 'base.html' %}{% load schedule_extras %}{% block content %}
+<style>
+@media print{ nav,.no-print{display:none!important} }
+.cell-gray{ background:#d1d5db!important; }
+</style>
+<div class="flex justify-between items-center mb-4 no-print">
+<div>
+<h1 class="text-xl font-black">График работы Бригады №{{ schedule.brigade_no }} на {{ schedule.month }} / {{ schedule.year }} года.</h1>
+<p class="text-xs text-gray-400">Утверждено: ____________ Норма {{ schedule.norm_hours }}ч</p>
+</div>
+<div class="flex gap-2">
+<a href="/schedule/{{ schedule.id }}/excel/" class="bg-[#181b22] border border-gray-700 px-4 py-2 rounded-xl text-sm">Excel</a>
+<button onclick="window.print()" class="bg-white text-black px-5 py-2 rounded-xl font-bold text-sm">Печать</button>
+</div>
+</div>
+
+<form method="post">{% csrf_token %}
+<div class="overflow-auto bg-white text-black rounded- border border-black">
+<table class="w-full border-collapse border border-black text- text-center">
+<thead>
+<tr class="bg-gray-100 font-bold">
+<th class="border border-black px-3 py-2 w-52 text-left">ФИО</th>
+{% for d in days %}<th class="border border-black px-1 py-1 w-">{{ d }}</th>{% endfor %}
+<th class="border border-black px-2 w-">Ур.</th>
+<th class="border border-black px-2 w-">Св.ур.</th>
+</tr>
+</thead>
+<tbody>
+{% for emp in employees %}
+{% with emp_id=emp.id %}
+<tr>
+<td rowspan="2" class="border border-black text-left px-3 py-2 font-bold text- bg-white">
+{% if emp.profile %}{{ emp.profile.short_name }}{% else %}Отсутствует О.О.{% endif %}
+</td>
+{% for d in days %}
+{% with entry=matrix|dict_get:emp_id|dict_get2:d %}
+<td class="border border-black p-0 {% if entry.shift == 'В' or entry.shift == 'О' %}cell-gray{% endif %}">
+<select name="shift_{{ emp_id }}_{{ d }}" id="shift_{{ emp_id }}_{{ d }}" onchange="autoHours(this, '{{ emp_id }}_{{ d }}')" class="w-full h- bg-white text-black font-black text- text-center border-0 outline-none appearance-none cursor-pointer">
+<option value="" {% if not entry.shift %}selected{% endif %}>-</option>
+<option value="Д" {% if entry.shift == 'Д' %}selected{% endif %}>Д</option>
+<option value="П" {% if entry.shift == 'П' %}selected{% endif %}>П</option>
+<option value="У" {% if entry.shift == 'У' %}selected{% endif %}>У</option>
+<option value="Н" {% if entry.shift == 'Н' %}selected{% endif %}>Н</option>
+<option value="В" {% if entry.shift == 'В' %}selected{% endif %}>В</option>
+<option value="О" {% if entry.shift == 'О' %}selected{% endif %}>О</option>
+</select>
+</td>
+{% endwith %}
+{% endfor %}
+<td class="border border-black font-black text- bg-white ur-cell" data-emp="{{ emp_id }}">{{ totals|dict_get:emp_id|dict_get_attr:'ur' }}</td>
+<td class="border border-black bg-white font-bold sv-cell" id="sv_{{ emp_id }}" data-emp="{{ emp_id }}">{{ totals|dict_get:emp_id|dict_get_attr:'sv' }}</td>
+</tr>
+<tr>
+{% for d in days %}
+{% with entry=matrix|dict_get:emp_id|dict_get2:d %}
+<td class="border border-black p-0 {% if entry.shift == 'В' or entry.shift == 'О' %}cell-gray{% endif %}">
+<input name="hours_{{ emp_id }}_{{ d }}" id="hours_{{ emp_id }}_{{ d }}" value="{{ entry.hours|floatformat:'-1' }}" class="w-full h- bg-white text-black text-center text- font-bold border-0 outline-none" oninput="recalcTotals()">
+</td>
+{% endwith %}
+{% endfor %}
+<td class="border border-black bg-gray-100"></td>
+<td class="border border-black bg-gray-100"></td>
+</tr>
+{% endwith %}
+{% endfor %}
+</tbody>
+</table>
+</div>
+<div class="mt-6 text- text-gray-300">Д-работа с 07:00 до 15:45, П-работа с 15:45 до 00:15, У-работа с 07:00 до 19:00, Н-работа с 19:00 до 07:00, В-выходной, О-отпуск.</div>
+<button class="mt-6 w-full bg-white text-black rounded-xl py-4 font-black text- no-print">Сохранить</button>
+</form>
+
+<script>
+const NORM = parseFloat("{{ schedule.norm_hours }}".replace(',','.'))||176;
+function autoHours(sel,key){
+ const map={'Д':8,'П':8,'У':11.2,'Н':11.2,'В':0,'О':0,'':'','-':''};
+ const el=document.getElementById('hours_'+key);
+ if(el && map.hasOwnProperty(sel.value)) el.value=map[sel.value];
+ recalcTotals();
+}
+function recalcTotals(){
+ document.querySelectorAll('.ur-cell').forEach(cell=>{
+   const empId = cell.dataset.emp;
+   let sum=0;
+   for(let d=1; d<=31; d++){
+     const s=document.getElementById(`shift_${empId}_${d}`);
+     const h=document.getElementById(`hours_${empId}_${d}`);
+     if(!s||!h) continue;
+     if(['В','О','','-'].includes(s.value)) continue;
+     sum+=parseFloat((h.value||'0').toString().replace(',','.'))||0;
+   }
+   const ur=Math.min(sum,NORM);
+   const sv=Math.max(0,sum-NORM);
+   cell.textContent=ur.toFixed(1).replace('.',',');
+   const svCell=document.getElementById(`sv_${empId}`);
+   if(svCell) svCell.textContent=sv? sv.toFixed(1).replace('.',',') : "0";
+ });
+}
+document.addEventListener('DOMContentLoaded', recalcTotals);
+</script>
+{% endblock %}

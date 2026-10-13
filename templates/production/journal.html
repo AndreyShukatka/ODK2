@@ -1,0 +1,59 @@
+{% extends 'base.html' %}{% block content %}
+<h1 class="text-2xl font-bold mb-4">Журнал — кто что закрывал</h1>
+
+<form method="get" class="bg-[#181b22] border border-gray-800 rounded-2xl p-4 flex flex-wrap gap-3 mb-6">
+<select name="user" class="bg-[#0f1115] border border-gray-700 rounded-xl px-3 py-2 text-sm">
+<option value="">Все пользователи</option>
+{% for u in users %}
+<option value="{{ u.id }}" {% if selected_user == u.id %}selected{% endif %}>{{ u.username }}</option>
+{% endfor %}
+</select>
+
+<select name="date" class="bg-[#0f1115] border border-gray-700 rounded-xl px-3 py-2 text-sm">
+<option value="">Все даты</option>
+{% for d in dates %}
+<option value="{{ d|date:'Y-m-d' }}" {% if selected_date == d|date:'Y-m-d' %}selected{% endif %}>{{ d }}</option>
+{% endfor %}
+</select>
+
+<button class="bg-white text-black rounded-xl px-4 py-2 text-sm font-bold">Показать</button>
+<a href="/journal/" class="text-sm text-gray-500 py-2">Сбросить</a>
+
+<div class="ml-auto text-sm flex gap-4 items-center">
+<span class="text-gray-400">Итого: <b class="text-white">{{ total_count }}</b> операций</span>
+<span class="text-gray-400">Время: <b class="text-white">{{ total_time_display }}</b></span>
+</div>
+</form>
+
+<div class="bg-[#181b22] border border-gray-800 rounded-2xl overflow-hidden">
+<div class="overflow-x-auto">
+<table class="w-full text-sm">
+<thead class="text- text-gray-500 uppercase border-b border-gray-800">
+<tr>
+<th class="text-left px-4 py-3">Дата / Время</th>
+<th class="text-left px-4 py-3">Пользователь</th>
+<th class="text-left px-4 py-3">Деталь [Комплект]</th>
+<th class="text-left px-4 py-3">Операция</th>
+<th class="text-left px-4 py-3">%</th>
+<th class="text-left px-4 py-3">Время</th>
+</tr>
+</thead>
+<tbody>
+{% for r in records %}
+<tr class="border-b border-gray-800/50 hover:bg-[#0f1115]">
+<td class="px-4 py-3 text-gray-400">{{ r.shift.date }}<br><span class="text-">{{ r.created_at|date:"H:i" }}</span></td>
+<td class="px-4 py-3"><span class="bg-[#0f1115] border border-gray-700 rounded-lg px-2 py-1">{{ r.user.username }}</span></td>
+<td class="px-4 py-3"><b>{{ r.kit.detail.number }}</b> [{{ r.kit.kit_number }}]<br><span class="text-xs text-gray-500">{{ r.kit.detail.name }}</span></td>
+<td class="px-4 py-3">Оп.{{ r.operation.number }} {{ r.operation.name }}</td>
+<td class="px-4 py-3"><span class="bg-white text-black rounded-lg px-2 py-1 font-bold text-xs">{{ r.percent }}%</span></td>
+<td class="px-4 py-3 text-gray-400">{{ r.time_display }}</td>
+</tr>
+{% empty %}
+<tr><td colspan="6" class="px-4 py-8 text-center text-gray-500">Нет записей</td></tr>
+{% endfor %}
+</tbody>
+</table>
+</div>
+</div>
+<p class="text-xs text-gray-600 mt-3">Показываются последние 200 записей. Используй фильтр по пользователю и дате.</p>
+{% endblock %}

@@ -1,0 +1,22 @@
+# Django
+__pycache__/
+*.pyc
+*.pyo
+db.sqlite3
+media/
+staticfiles/
+*.log
+
+# Venv - САМОЕ ВАЖНОЕ
+venv/
+.venv/
+env/
+ENV/
+
+# PyCharm
+.idea/
+*.iml
+
+# Секреты
+.env
+settings_local.py

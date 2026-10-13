@@ -1,0 +1,161 @@
+{% extends 'base.html' %}{% block content %}
+<div class='mb-6 flex flex-col sm:flex-row sm:items-end justify-between gap-4'>
+<div>
+<h1 class='text-2xl font-bold'>Смена {{ shift.date }}</h1>
+<p class='text-sm text-gray-500'>{{ shift.total_details }} записей • {{ shift.total_time_display }}</p>
+</div>
+<div class='bg-[#181b22] border border-gray-800 rounded-2xl px-5 py-3 flex gap-6 text-sm'>
+<div><div class='text-gray-500 uppercase text-xs'>Закрыто за день</div><div class='font-bold text-lg'>{{ shift.total_details }} <span class='text-xs font-normal text-gray-400'>операций</span></div></div>
+<div class='w-px bg-gray-800'></div>
+<div><div class='text-gray-500 uppercase text-xs'>Время</div><div class='font-bold text-lg'>{{ shift.total_time_display }}</div></div>
+</div>
+</div>
+
+<div class='grid grid-cols-1 lg:grid-cols-12 gap-6'>
+<!-- ЛЕВО: ЗАКРЫТЬ РАБОТУ -->
+<div class='lg:col-span-4 bg-[#181b22] border border-gray-800 rounded-2xl p-5 h-fit space-y-4'>
+<h2 class='font-bold mb-3'>+ Закрыть работу</h2>
+<form method='post' action='/add/' class='space-y-4'>{% csrf_token %}
+<div class='space-y-2'>
+<label class='text-xs text-gray-500 font-bold'>1. Деталь</label>
+<select id='detail-select' required class='w-full bg-[#0f1115] border border-gray-700 rounded-xl px-3 py-3 text-sm'>
+<option value=''>— выбери деталь —</option>
+{% for d in details %}<option value='{{ d.id }}'>{{ d.number }} — {{ d.name }}</option>{% endfor %}
+</select>
+</div>
+<div id='op-box' class='hidden space-y-2'>
+<label class='text-xs text-gray-500 font-bold'>2. Номер операции</label>
+<select id='operation-select' name='operation' required class='w-full bg-[#0f1115] border border-gray-700 rounded-xl px-3 py-3 text-sm'>
+<option value=''>— выбери операцию —</option>
+{% for op in operations %}<option value='{{ op.id }}' data-detail='{{ op.detail.id }}'>Оп.{{ op.number }} {{ op.name }} — {{ op.norm_display }}</option>{% endfor %}
+</select>
+</div>
+<div id='kit-box' class='hidden space-y-2'>
+<label class='text-xs text-gray-500 font-bold'>3. Номер комплекта (создается сам)</label>
+<input id='kit-input' name='kit_number' list='kits' placeholder='Выбери из списка или впиши новый' required class='w-full bg-[#0f1115] border border-gray-700 rounded-xl px-3 py-3 text-sm' autocomplete="off">
+<datalist id='kits'></datalist>
+<div id='kit-hint' class='text-xs text-gray-500'></div>
+<div class='grid grid-cols-2 gap-2 pt-2'>
+<div><label class='text-xs text-gray-500'>% (шаг 10%)</label>
+<select id='percent-select' name='percent' class='w-full bg-[#0f1115] border border-gray-700 rounded-xl px-3 py-2'></select></div>
+<div class='flex items-end'><button class='w-full bg-white text-black rounded-xl py-2 font-bold'>Закрыть</button></div>
+</div>
+</div>
+</form>
+<script>
+const dSel=document.getElementById('detail-select');const oSel=document.getElementById('operation-select');const opBox=document.getElementById('op-box');const kitBox=document.getElementById('kit-box');const kitInput=document.getElementById('kit-input');const kitsDatalist=document.getElementById('kits');const kitHint=document.getElementById('kit-hint');const percentSel=document.getElementById('percent-select');const allOps=[...oSel.options].slice(1);
+const allKits = [{% for k in kits %}{ number: "{{ k.kit_number|escapejs }}", detail: "{{ k.detail.id }}", ops: { {% for r in k.records.all %}"{{ r.operation_id }}": {{ r.percent }},{% endfor %} } },{% endfor %}];
+function onDetailChange(){const did=dSel.value;oSel.innerHTML='<option value="">— выбери операцию —</option>';kitBox.classList.add('hidden');if(!did){opBox.classList.add('hidden');return;}allOps.forEach(o=>{if(o.dataset.detail===did)oSel.appendChild(o.cloneNode(true));});opBox.classList.remove('hidden');}
+function onOperationChange(){const did=dSel.value;const opId=oSel.value;kitsDatalist.innerHTML='';if(!opId){kitBox.classList.add('hidden');return;}let cnt=0;allKits.forEach(k=>{if(k.detail!==did)return;const cur=k.ops[opId]||0;if(cur>=100)return;const remain=100-cur;const opt=document.createElement('option');opt.value=k.number;opt.label=cur>0?`закрыто ${cur}% • осталось ${remain}%`:`новый • осталось 100%`;kitsDatalist.appendChild(opt);cnt++;});kitHint.textContent=cnt?`Открытых по этой операции: ${cnt}`:'Все закрыты — впиши новый номер';kitBox.classList.remove('hidden');kitInput.value='';resetPercentOptions(100);kitInput.focus();}
+function resetPercentOptions(remaining){percentSel.innerHTML='';for(let v=10;v<=remaining;v+=10){const o=document.createElement('option');o.value=v;o.textContent=v+'% (останется '+(remaining-v)+'%)';percentSel.appendChild(o);}if(remaining>0&&remaining%10!==0){const o=document.createElement('option');o.value=remaining;o.textContent=remaining+'% (до 100%)';percentSel.appendChild(o);}}
+function onKitChange(){const opId=oSel.value;const kitNum=kitInput.value.trim();if(!kitNum||!opId)return;const found=allKits.find(k=>k.number===kitNum);const cur=found?(found.ops[opId]||0):0;const remain=100-cur;resetPercentOptions(remain>0?remain:100);}
+dSel.addEventListener('change',onDetailChange);oSel.addEventListener('change',onOperationChange);kitInput.addEventListener('input',onKitChange);
+</script>
+<div class='border-t border-gray-800 pt-4 space-y-2'>
+<a href='/add-operation/' class='block w-full bg-[#0f1115] border border-dashed border-gray-700 rounded-xl py-2 text-center text-sm'>+ Добавить операцию к детали</a>
+<a href='/add-detail/' class='block w-full bg-[#0f1115] border border-dashed border-gray-700 rounded-xl py-2 text-center text-sm'>+ Создать деталь</a>
+</div>
+</div>
+
+<!-- ЦЕНТР: СЕГОДНЯ -->
+<div class='lg:col-span-4 space-y-4'>
+<div class='bg-[#181b22] border border-gray-800 rounded-2xl p-5'><h2 class='font-bold mb-3'>Сегодня</h2>
+{% for r in records %}<div class='flex justify-between bg-[#0f1115] border border-gray-800 rounded-xl px-4 py-3 text-sm mb-2'><div><b>{{ r.kit.detail.number }} [{{ r.kit.kit_number }}]</b> Оп.{{ r.operation.number }}<div class='text-xs text-gray-500'>{{ r.percent }}% • {{ r.time_display }} • осталось {{ r.remaining }}%</div></div><a href='/kit/{{ r.kit.id }}/' class='text-xs underline'>{{ r.kit.total_percent }}%</a></div>{% empty %}Пусто{% endfor %}
+</div>
+</div>
+
+<!-- ПРАВО: ТВОЯ СИНЯЯ ОБЛАСТЬ - ЧАСЫ + КТО В СМЕНЕ -->
+<div class='lg:col-span-4 space-y-4'>
+
+<!-- КРАСИВЫЕ ЧАСЫ -->
+<div class='bg-[#181b22] border border-gray-800 rounded-2xl p-5 relative overflow-hidden'>
+  <div class='absolute top-0 right-0 w-32 h-32 bg-white/[0.03] rounded-full blur-2xl'></div>
+  <div class='flex justify-between items-start'>
+    <div>
+      <p class='text-xs uppercase tracking-widest text-gray-500 font-bold'>Сейчас</p>
+      <p id='live-clock' class='text-4xl font-black text-white tracking-tight mt-2 tabular-nums'>00:00</p>
+      <p id='live-date' class='text-xs text-gray-500 mt-1'>12 октября • пн</p>
+    </div>
+    <div class='w-16 h-16 rounded-full border border-white/10 flex items-center justify-center relative bg-[#0f1115]'>
+      <div class='w-1.5 h-1.5 bg-white rounded-full z-10'></div>
+      <div id='hour-hand' class='absolute w-0.5 h-5 bg-white/60 origin-bottom bottom-1/2 rounded-full' style='transform: rotate(0deg)'></div>
+      <div id='minute-hand' class='absolute w-0.5 h-6 bg-white origin-bottom bottom-1/2 rounded-full' style='transform: rotate(0deg)'></div>
+    </div>
+  </div>
+  <div class='mt-4 flex gap-2'>
+    <div class='bg-[#0f1115] border border-gray-800 rounded-full px-3 py-1.5 text-xs'><span class='text-gray-500'>Смена:</span> <span class='text-white font-bold ml-1'>19:00-07:00</span></div>
+    <div class='bg-[#0f1115] border border-gray-800 rounded-full px-3 py-1.5 text-xs'><span class='text-gray-500'>Осталось:</span> <span id='shift-left' class='text-white font-bold ml-1'>--:--</span></div>
+  </div>
+</div>
+
+<div class='bg-[#181b22] border border-gray-800 rounded-2xl p-5'>
+  <div class='flex justify-between items-center mb-4'>
+    <h2 class='font-bold text-xs uppercase tracking-widest text-gray-500'>Со мной в смене</h2>
+    <span class='text-xs text-gray-500'>{{ today|date:"d.m.Y" }} • 4 бригада</span>
+  </div>
+
+  <div class='bg-[#0f1115] border border-gray-800 rounded-xl p-4 mb-4'>
+    <div class='flex items-center gap-3'>
+      <div class='relative'>
+        <div class='w-10 h-10 rounded-full bg-white text-black flex items-center justify-center font-black text-sm'>{{ my_shift|default:"Н" }}</div>
+        <div class='absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-[#0f1115]'></div>
+      </div>
+      <div class='flex-1'>
+        <p class='font-bold text-sm'>Ночь 19:00-07:00</p>
+        <p class='text-xs text-gray-500 mt-0.5'>{{ closed_records }}/{{ total_records }} • {{ total_percent }}% суммарно</p>
+      </div>
+    </div>
+    <div class='mt-3 w-full h-1.5 bg-white/10 rounded-full overflow-hidden'><div class='h-full bg-white' style='width: {{ progress }}%'></div></div>
+  </div>
+
+  <div class='space-y-2'>
+    {% for e in colleagues %}
+    <div class='flex items-center justify-between bg-[#0f1115] border border-gray-800 rounded-full pl-1.5 pr-4 py-2'>
+      <div class='flex items-center gap-3'>
+        <div class='w-8 h-8 rounded-full bg-[#2a2e3b] flex items-center justify-center font-bold text-xs'>{{ e.employee.profile.short_name|slice:":1" }}</div>
+        <span class='text-sm'>{{ e.employee.profile.short_name }}</span>
+      </div>
+      <span class='text-xs text-gray-400'>{{ e.hours|floatformat:"-1" }}ч</span>
+    </div>
+    {% empty %}
+    <div class='flex items-center justify-between bg-[#0f1115] border border-gray-800 rounded-full pl-1.5 pr-4 py-2'>
+      <div class='flex items-center gap-3'>
+        <div class='w-8 h-8 rounded-full bg-[#2a2e3b] flex items-center justify-center font-bold text-xs'>Ш</div>
+        <span class='text-sm'>Шукатка А.А.</span>
+      </div>
+      <span class='text-xs text-gray-400'>11,2ч</span>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+</div>
+
+</div>
+
+<script>
+function updateClock(){
+  const now=new Date();
+  const hh=String(now.getHours()).padStart(2,'0');
+  const mm=String(now.getMinutes()).padStart(2,'0');
+  const clockEl=document.getElementById('live-clock');
+  if(clockEl) clockEl.textContent=`${hh}:${mm}`;
+  const dateEl=document.getElementById('live-date');
+  if(dateEl){
+    const opts={day:'numeric',month:'long',weekday:'short'};
+    dateEl.textContent=now.toLocaleDateString('ru-RU',opts);
+  }
+  const h=now.getHours()%12, m=now.getMinutes();
+  const hHand=document.getElementById('hour-hand');
+  const mHand=document.getElementById('minute-hand');
+  if(hHand) hHand.style.transform=`rotate(${h*30 + m*0.5}deg)`;
+  if(mHand) mHand.style.transform=`rotate(${m*6}deg)`;
+  let end=new Date(); end.setHours(7,0,0,0);
+  if(now>=end) end.setDate(end.getDate()+1);
+  let diff=Math.max(0,end-now);
+  let dh=Math.floor(diff/3600000), dm=Math.floor(diff%3600000/60000);
+  const leftEl=document.getElementById('shift-left');
+  if(leftEl) leftEl.textContent=`${dh}ч ${dm}м`;
+}
+setInterval(updateClock,1000); updateClock();
+</script>
+{% endblock %}

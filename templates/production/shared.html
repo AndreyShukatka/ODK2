@@ -1,0 +1,1 @@
+{% extends 'base.html' %}{% block content %}<h1 class='text-xl font-bold mb-4'>Смены {{ target.username }}</h1>{% for s in shifts %}<div class='bg-[#181b22] border rounded-xl p-4 mb-2'>{{ s.date }} - {{ s.total_details }} дет / {{ s.total_earned }}р</div>{% endfor %}{% endblock %}
